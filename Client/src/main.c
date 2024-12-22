@@ -1,14 +1,16 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-
-#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
+#include <conio.h>
+#include "../../Server/src/command.h"
 
 static void WindowsError(void);
 
 int main(int argc, char **argv)
 {
-	DWORD maxbufsize = 4096;
+	DWORD maxbufsize = sizeof(serverstate_t);
 
 	HANDLE mapfile = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, L"MyFileMappingObject");
 	if (!mapfile)
@@ -17,7 +19,7 @@ int main(int argc, char **argv)
 		return(1);
 	}
 
-	unsigned char *buffer = MapViewOfFile(mapfile, FILE_MAP_ALL_ACCESS, 0, 0, maxbufsize);
+	serverstate_t *buffer = MapViewOfFile(mapfile, FILE_MAP_ALL_ACCESS, 0, 0, maxbufsize);
 	if (!buffer)
 	{
 		WindowsError();
@@ -25,10 +27,66 @@ int main(int argc, char **argv)
 		return(1);
 	}
 
-	printf("Received: %s\n", buffer);
+	HANDLE closeevent = OpenEvent(EVENT_ALL_ACCESS, FALSE, L"OnServerClose");
+	if (!closeevent)
+	{
+		WindowsError();
+		UnmapViewOfFile(buffer);
+		CloseHandle(mapfile);
+		return(1);
+	}
+
+	HANDLE getclientid = OpenEvent(EVENT_ALL_ACCESS, FALSE, L"OnGetClientID");
+	if (!getclientid)
+	{
+		WindowsError();
+		CloseHandle(closeevent);
+		UnmapViewOfFile(buffer);
+		CloseHandle(mapfile);
+		return(1);
+	}
+
+	printf("Client running. Press ESC to exit...\n");
+
+	int clientid = -1;
+	buffer->cmd = CMD_INIT;
+
+	if (WaitForSingleObject(getclientid, INFINITE) == WAIT_OBJECT_0)
+	{
+		clientid = buffer->clientid;
+		printf("Client initialized with ID: %d...\n", clientid);
+	}
+
+	while (1)
+	{
+		if (_kbhit())
+		{
+			int ch = _getch();
+			if (ch == KEY_ESC)
+			{
+				buffer->cmd = CMD_EXIT;
+				break;
+			}
+
+			buffer->cmd = CMD_KEYDOWN;
+			buffer->clientid = clientid;
+
+			if (buffer->clientid >= 0)
+				buffer->state[buffer->clientid].key = ch;
+		}
+
+		if (WaitForSingleObject(closeevent, 0) == WAIT_OBJECT_0)
+		{
+			printf("Server closed, shutting down Client...\n");
+			fflush(stdout);
+			break;
+		}
+	}
 
 	UnmapViewOfFile(buffer);
 	CloseHandle(mapfile);
+	CloseHandle(closeevent);
+	CloseHandle(getclientid);
 
 	return(0);
 }
