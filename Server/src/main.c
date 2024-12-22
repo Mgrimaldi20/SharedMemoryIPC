@@ -3,6 +3,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
+#include <conio.h>
 
 static void WindowsError(void);
 
@@ -29,7 +30,7 @@ int main(int argc, char **argv)
 	printf("Sent: %s\n", buffer);
 
 	printf("Press any key to continue...\n");
-	int c = getchar();
+	int c = _getch();
 
 	UnmapViewOfFile(buffer);
 	CloseHandle(mapfile);
